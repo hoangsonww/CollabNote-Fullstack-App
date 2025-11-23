@@ -15,7 +15,7 @@ export class NotesService {
    *
    * @param supabaseService The SupabaseService instance
    */
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(private readonly supabaseService: SupabaseService) { }
 
   /**
    * Retrieve notes for a user
@@ -282,5 +282,224 @@ export class NotesService {
     }
 
     return { message: "Notes reordered" };
+  }
+
+  /**
+   * Get the encrypted key for a note
+   *
+   * @param noteId The ID of the note
+   * @param userId The ID of the user
+   */
+  async getNoteKey(noteId: number | string, userId: number | string) {
+    // Note: noteId and userId types are loose here to accommodate potential UUID migration.
+    // In a strict environment, these should match the DB types.
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from("note_keys")
+      .select("wrapped_dk, alg")
+      .eq("note_id", noteId)
+      .eq("user_id", userId)
+      .single();
+
+    if (error) {
+      throw new NotFoundException("Key not found for this note");
+    }
+
+    return data;
+  }
+
+  /**
+   * Create an encrypted note with E2EE support
+   *
+   * @param userId The ID of the user creating the note
+   * @param noteData The encrypted note data
+   */
+  async createEncryptedNote(
+    userId: number | string,
+    encryptedNoteData: {
+      title: string;
+      ciphertext: string;
+      nonce: string;
+      aad?: string;
+      encryption_version: number;
+      note_keys: Array<{ userId: string; wrapped_dk: string; alg: string }>;
+      tags?: string[];
+      dueDate?: string;
+      color?: string;
+    },
+  ) {
+    const {
+      title,
+      ciphertext,
+      nonce,
+      aad,
+      encryption_version,
+      note_keys,
+      tags,
+      dueDate,
+      color,
+    } = encryptedNoteData;
+
+    // IMPORTANT: Server never reads or logs the ciphertext or wrapped keys
+    // Convert hex strings to Buffer for bytea storage
+    const ciphertextBuffer = Buffer.from(ciphertext, "hex");
+    const nonceBuffer = Buffer.from(nonce, "hex");
+
+    // 1. Insert the note with encrypted content
+    const { data: noteData, error: noteError } = await this.supabaseService
+      .getClient()
+      .from("notes")
+      .insert([
+        {
+          user_id: userId,
+          title, // Title can be plaintext or encrypted
+          content: null, // Legacy content field, set to null for E2EE notes
+          ciphertext: ciphertextBuffer,
+          nonce: nonceBuffer,
+          aad: aad || null,
+          encryption_version,
+          tags: tags || [],
+          due_date: dueDate || null,
+          color: color || "#ffffff",
+          pinned: false,
+          shared_with_user_ids: [], // Legacy field, kept for compatibility
+          sort_order: 999999,
+        },
+      ])
+      .select()
+      .single();
+
+    if (noteError) {
+      throw new BadRequestException(noteError.message);
+    }
+
+    const noteId = noteData.id;
+
+    // 2. Insert note_keys for all users with access
+    const noteKeysToInsert = note_keys.map((nk) => ({
+      note_id: noteId,
+      user_id: nk.userId,
+      wrapped_dk: Buffer.from(nk.wrapped_dk, "hex"), // Convert hex to Buffer
+      alg: nk.alg || "ECDH-ES+A256KW",
+    }));
+
+    const { error: keysError } = await this.supabaseService
+      .getClient()
+      .from("note_keys")
+      .insert(noteKeysToInsert);
+
+    if (keysError) {
+      // Rollback: delete the note if key insertion fails
+      await this.supabaseService
+        .getClient()
+        .from("notes")
+        .delete()
+        .eq("id", noteId);
+
+      throw new BadRequestException(
+        `Failed to insert note keys: ${keysError.message}`,
+      );
+    }
+
+    return noteData;
+  }
+
+  /**
+   * Share an encrypted note with a collaborator
+   *
+   * @param noteId The ID of the note
+   * @param ownerId The ID of the note owner
+   * @param collaboratorUserId The ID of the collaborator
+   * @param wrapped_dk The wrapped Data Key for the collaborator
+   * @param alg The algorithm used for key wrapping
+   */
+  async shareEncryptedNote(
+    noteId: number | string,
+    ownerId: number | string,
+    collaboratorUserId: string,
+    wrapped_dk: string,
+    alg?: string,
+  ) {
+    // 1. Verify the note exists and user is the owner
+    const { data: note, error: findError } = await this.supabaseService
+      .getClient()
+      .from("notes")
+      .select("user_id")
+      .eq("id", noteId)
+      .single();
+
+    if (findError || !note) {
+      throw new NotFoundException("Note not found");
+    }
+
+    if (note.user_id !== ownerId) {
+      throw new BadRequestException("You are not the owner of this note");
+    }
+
+    // 2. Insert the wrapped key for the collaborator
+    // IMPORTANT: Server never reads or logs the wrapped_dk
+    const { error: insertError } = await this.supabaseService
+      .getClient()
+      .from("note_keys")
+      .insert({
+        note_id: noteId,
+        user_id: collaboratorUserId,
+        wrapped_dk: Buffer.from(wrapped_dk, "hex"),
+        alg: alg || "ECDH-ES+A256KW",
+      });
+
+    if (insertError) {
+      throw new BadRequestException(
+        `Failed to share note: ${insertError.message}`,
+      );
+    }
+
+    return { message: "Note shared successfully" };
+  }
+
+  /**
+   * Unshare an encrypted note (revoke access)
+   *
+   * @param noteId The ID of the note
+   * @param ownerId The ID of the note owner
+   * @param collaboratorUserId The ID of the collaborator to remove
+   */
+  async unshareNote(
+    noteId: number | string,
+    ownerId: number | string,
+    collaboratorUserId: string,
+  ) {
+    // 1. Verify the note exists and user is the owner
+    const { data: note, error: findError } = await this.supabaseService
+      .getClient()
+      .from("notes")
+      .select("user_id")
+      .eq("id", noteId)
+      .single();
+
+    if (findError || !note) {
+      throw new NotFoundException("Note not found");
+    }
+
+    if (note.user_id !== ownerId) {
+      throw new BadRequestException("You are not the owner of this note");
+    }
+
+    // 2. Delete the note_key row for the collaborator
+    const { error: deleteError } = await this.supabaseService
+      .getClient()
+      .from("note_keys")
+      .delete()
+      .eq("note_id", noteId)
+      .eq("user_id", collaboratorUserId);
+
+    if (deleteError) {
+      throw new BadRequestException(
+        `Failed to unshare note: ${deleteError.message}`,
+      );
+    }
+
+    return { message: "Access revoked successfully" };
   }
 }

@@ -8,6 +8,7 @@ import { AuthModule } from "./auth/auth.module";
 import { NotesModule } from "./notes/notes.module";
 import { ProfileModule } from "./profile/profile.module";
 import { SupabaseModule } from "./supabase/supabase.module";
+import { CryptoModule } from "./crypto/crypto.module";
 
 @Module({
   imports: [
@@ -24,9 +25,10 @@ import { SupabaseModule } from "./supabase/supabase.module";
     NotesModule,
     SupabaseModule,
     ProfileModule,
+    CryptoModule,
   ],
 })
 /**
  * Main application module
  */
-export class AppModule {}
+export class AppModule { }

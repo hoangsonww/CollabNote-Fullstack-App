@@ -22,6 +22,8 @@ import {
   ApiParam,
   ApiBearerAuth,
 } from "@nestjs/swagger";
+import { CreateEncryptedNoteDto } from "../dto/create-encrypted-note.dto";
+import { ShareNoteDto } from "../dto/share-note.dto";
 
 @ApiTags("Notes")
 @Controller("notes")
@@ -35,7 +37,7 @@ export class NotesController {
    *
    * @param notesService The NotesService instance
    */
-  constructor(private readonly notesService: NotesService) {}
+  constructor(private readonly notesService: NotesService) { }
 
   @UseGuards(AuthGuard("jwt"))
   @Get()
@@ -211,5 +213,79 @@ export class NotesController {
     @Body() body: { noteOrder: number[] },
   ) {
     return this.notesService.reorderNotes(req.user.id, body.noteOrder);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get(":id/key")
+  @ApiOperation({ summary: "Get the encrypted key for a note" })
+  @ApiResponse({ status: 200, description: "Key retrieved successfully" })
+  @ApiResponse({ status: 404, description: "Key not found" })
+  @ApiParam({ name: "id", description: "ID of the note" })
+  /**
+   * Get the encrypted key for a note
+   */
+  async getNoteKey(
+    @Request() req: AuthenticatedRequest,
+    @Param("id") id: string,
+  ) {
+    // Casting req.user.id to string/number as needed by service.
+    // The service handles loose types.
+    return this.notesService.getNoteKey(id, req.user.id);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("encrypted")
+  @ApiOperation({ summary: "Create an encrypted note with E2EE" })
+  @ApiResponse({ status: 201, description: "Encrypted note created successfully" })
+  @ApiResponse({ status: 400, description: "Invalid input" })
+  /**
+   * Create an encrypted note
+   */
+  async createEncryptedNote(
+    @Request() req: AuthenticatedRequest,
+    @Body() body: CreateEncryptedNoteDto,
+  ) {
+    return this.notesService.createEncryptedNote(req.user.id, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post(":id/share-encrypted")
+  @ApiOperation({ summary: "Share an encrypted note with a collaborator" })
+  @ApiResponse({ status: 200, description: "Note shared successfully" })
+  @ApiResponse({ status: 404, description: "Note not found" })
+  @ApiParam({ name: "id", description: "ID of the note to share" })
+  /**
+   * Share an encrypted note
+   */
+  async shareEncryptedNote(
+    @Request() req: AuthenticatedRequest,
+    @Param("id") id: string,
+    @Body() body: ShareNoteDto,
+  ) {
+    return this.notesService.shareEncryptedNote(
+      id,
+      req.user.id,
+      body.collaboratorUserId,
+      body.wrapped_dk,
+      body.alg,
+    );
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Delete(":id/share/:userId")
+  @ApiOperation({ summary: "Revoke access to an encrypted note" })
+  @ApiResponse({ status: 200, description: "Access revoked successfully" })
+  @ApiResponse({ status: 404, description: "Note not found" })
+  @ApiParam({ name: "id", description: "ID of the note" })
+  @ApiParam({ name: "userId", description: "ID of the user to revoke access from" })
+  /**
+   * Unshare an encrypted note (revoke access)
+   */
+  async unshareNote(
+    @Request() req: AuthenticatedRequest,
+    @Param("id") id: string,
+    @Param("userId") userId: string,
+  ) {
+    return this.notesService.unshareNote(id, req.user.id, userId);
   }
 }

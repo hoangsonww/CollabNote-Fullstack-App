@@ -24,7 +24,7 @@ export class CryptoController {
     @ApiResponse({ status: 200, description: "Public key retrieved successfully" })
     @ApiResponse({ status: 404, description: "Public key not found" })
     async getPublicKey(@Request() req: AuthenticatedRequest) {
-        return this.cryptoService.getPublicKey(req.user.id as unknown as string);
+        return this.cryptoService.getPublicKey(req.user.id);
     }
 
     @UseGuards(AuthGuard("jwt"))
@@ -38,7 +38,7 @@ export class CryptoController {
         // Casting req.user.id to string to match the requested UUID type for user_keys.
         // NOTE: If the system uses Integer IDs, this cast is unsafe and the DB operation will fail if the column expects UUID.
         return this.cryptoService.uploadPublicKey(
-            req.user.id as unknown as string,
+            req.user.id,
             body.publicKey,
             body.version,
         );

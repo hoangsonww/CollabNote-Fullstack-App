@@ -302,7 +302,7 @@ export class NotesService {
       .eq("user_id", userId)
       .single();
 
-    if (error) {
+    if (error || !data) {
       throw new NotFoundException("Key not found for this note");
     }
 

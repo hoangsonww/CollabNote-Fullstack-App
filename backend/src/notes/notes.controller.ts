@@ -22,6 +22,8 @@ import {
   ApiParam,
   ApiBearerAuth,
 } from "@nestjs/swagger";
+import { CreateEncryptedNoteDto } from "../dto/create-encrypted-note.dto";
+import { ShareNoteDto } from "../dto/share-note.dto";
 
 @ApiTags("Notes")
 @Controller("notes")
@@ -241,13 +243,13 @@ export class NotesController {
    */
   async createEncryptedNote(
     @Request() req: AuthenticatedRequest,
-    @Body() body: any, // Will be CreateEncryptedNoteDto
+    @Body() body: CreateEncryptedNoteDto,
   ) {
     return this.notesService.createEncryptedNote(req.user.id, body);
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @Post(":id/share")
+  @Post(":id/share-encrypted")
   @ApiOperation({ summary: "Share an encrypted note with a collaborator" })
   @ApiResponse({ status: 200, description: "Note shared successfully" })
   @ApiResponse({ status: 404, description: "Note not found" })
@@ -258,7 +260,7 @@ export class NotesController {
   async shareEncryptedNote(
     @Request() req: AuthenticatedRequest,
     @Param("id") id: string,
-    @Body() body: any, // Will be ShareNoteDto
+    @Body() body: ShareNoteDto,
   ) {
     return this.notesService.shareEncryptedNote(
       id,

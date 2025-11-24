@@ -10,8 +10,8 @@ ADD COLUMN content_hash TEXT;
 
 -- 2. Create note_keys table
 CREATE TABLE note_keys (
-    note_id UUID NOT NULL,
-    user_id UUID NOT NULL,
+    note_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
     wrapped_dk BYTEA,
     alg TEXT,
     PRIMARY KEY (note_id, user_id),
@@ -21,7 +21,7 @@ CREATE TABLE note_keys (
 
 -- 3. Create user_keys table
 CREATE TABLE user_keys (
-    user_id UUID NOT NULL PRIMARY KEY,
+    user_id BIGINT NOT NULL PRIMARY KEY,
     pub_key BYTEA,
     pub_key_version INT,
     CONSTRAINT fk_user_key FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

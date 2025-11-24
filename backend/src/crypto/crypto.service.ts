@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
 import { SupabaseService } from "../supabase/supabase.service";
 
 @Injectable()
@@ -13,7 +13,7 @@ export class CryptoService {
    * @param version The version of the public key
    */
   async uploadPublicKey(
-    userId: string,
+    userId: number,
     publicKey: Buffer | string,
     version: number,
   ) {
@@ -59,7 +59,7 @@ export class CryptoService {
    *
    * @param userId The ID of the user
    */
-  async getPublicKey(userId: string) {
+  async getPublicKey(userId: number) {
     const { data, error } = await this.supabaseService
       .getClient()
       .from("user_keys")
@@ -68,7 +68,7 @@ export class CryptoService {
       .single();
 
     if (error || !data) {
-      throw new BadRequestException("Public key not found");
+      throw new NotFoundException("Public key not found");
     }
 
     // Convert Buffer to hex string for JSON response
